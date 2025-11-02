@@ -29,6 +29,8 @@ use super::scalar_specs::*;
 #[allow(unused_imports)]
 use vstd::arithmetic::div_mod::*;
 #[allow(unused_imports)]
+use vstd::arithmetic::mul::*;
+#[allow(unused_imports)]
 use vstd::arithmetic::power2::*;
 use vstd::prelude::*;
 
@@ -790,9 +792,66 @@ impl Scalar52 {
             // VER NOTE: Result is canonical from montgomery_reduce
             to_nat(&result.limbs) < group_order(),
     {
-        assume(false);  // TODO: Add proofs
         let ab = Scalar52::montgomery_reduce(&Scalar52::mul_internal(a, b));
-        Scalar52::montgomery_reduce(&Scalar52::mul_internal(&ab, &constants::RR))
+        proof { lemma_rr_constants_bounded(); }
+        let result = Scalar52::montgomery_reduce(&Scalar52::mul_internal(&ab, &constants::RR));
+        proof {
+            lemma_rr_equals_r_squared_mod_group_order();
+            lemma_group_order_is_odd();
+            let modulus = group_order();
+            let radix = montgomery_radix();
+            let rr_nat = to_nat(&constants::RR.limbs);
+            let ab_nat = to_nat(&ab.limbs);
+            let result_nat = to_nat(&result.limbs);
+            let a_nat = to_nat(&a.limbs);
+            let b_nat = to_nat(&b.limbs);
+            let product_mod = (a_nat * b_nat) % modulus;
+
+            let rr_square = (radix * radix) % modulus;
+            assert(rr_nat == rr_square);
+
+            let rr_step_start = (ab_nat * rr_nat) % modulus;
+            let rr_step_mid = (ab_nat * rr_square) % modulus;
+            let rr_step_end = (ab_nat * (radix * radix)) % modulus;
+
+            assert(rr_step_start == rr_step_mid) by {
+                assert(rr_nat == rr_square);
+            };
+            assert(rr_step_mid == rr_step_end) by {
+                lemma_mod_mul_factor_right(ab_nat, radix * radix, modulus);
+            };
+            lemma_eq_trans_nat(rr_step_start, rr_step_mid, rr_step_end);
+
+            let result_with_radix = (result_nat * radix) % modulus;
+            assert(result_with_radix == rr_step_start);
+            lemma_eq_trans_nat(result_with_radix, rr_step_start, rr_step_end);
+
+            lemma_mul_is_associative(ab_nat as int, radix as int, radix as int);
+            let assoc_step = ((ab_nat * radix) * radix) % modulus;
+            assert(rr_step_end == assoc_step);
+
+            lemma_mod_mul_factor_left(ab_nat * radix, radix, modulus);
+            let factor_step = (((ab_nat * radix) % modulus) * radix) % modulus;
+            assert(assoc_step == factor_step);
+
+            assert((ab_nat * radix) % modulus == product_mod);
+            let product_step = (product_mod * radix) % modulus;
+            assert(factor_step == product_step);
+
+            lemma_eq_trans_nat(result_with_radix, assoc_step, factor_step);
+            lemma_eq_trans_nat(result_with_radix, factor_step, product_step);
+
+            let inv = montgomery_radix_inverse();
+            lemma_montgomery_radix_inverse();
+            lemma_cancel_mod_factor(result_nat, product_mod, radix, inv, modulus);
+
+            lemma_small_mod(result_nat, modulus);
+            lemma_small_mod(product_mod, modulus);
+            assert(result_nat % modulus == result_nat);
+            assert(product_mod % modulus == product_mod);
+            assert(result_nat == product_mod);
+        }
+        result
     }
 
     /// Compute `a^2` (mod l)

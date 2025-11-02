@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use super::common_verus::*;
 #[allow(unused_imports)]
+use super::common_verus::div_mod_lemmas::*;
+#[allow(unused_imports)]
 use super::constants;
 #[allow(unused_imports)]
 use super::field_lemmas::field_core::*;
@@ -426,6 +428,189 @@ pub proof fn lemma_rr_limbs_bounded()
 {
     // Verus can figure that out the other 4 limbs are bounded
     assert(0x000d63c715bea69fu64 < (1u64 << 52)) by (bit_vector);
+}
+
+pub(crate) proof fn lemma_rr_constants_bounded()
+    ensures
+        limbs_bounded(&constants::RR),
+{
+    assert_forall_by(|i: int| {
+        requires(0 <= i < 5);
+        ensures(constants::RR.limbs[i] < (1u64 << 52));
+        if i == 0 {
+            assert(constants::RR.limbs[i] == constants::RR.limbs[0]);
+            assert(constants::RR.limbs[0] == 0x0009d265e952d13b) by (compute);
+            assert(0x0009d265e952d13b < (1u64 << 52)) by (bit_vector);
+        } else if i == 1 {
+            assert(constants::RR.limbs[i] == constants::RR.limbs[1]);
+            assert(constants::RR.limbs[1] == 0x000d63c715bea69f) by (compute);
+            assert(0x000d63c715bea69f < (1u64 << 52)) by (bit_vector);
+        } else if i == 2 {
+            assert(constants::RR.limbs[i] == constants::RR.limbs[2]);
+            assert(constants::RR.limbs[2] == 0x0005be65cb687604) by (compute);
+            assert(0x0005be65cb687604 < (1u64 << 52)) by (bit_vector);
+        } else if i == 3 {
+            assert(constants::RR.limbs[i] == constants::RR.limbs[3]);
+            assert(constants::RR.limbs[3] == 0x0003dceec73d217f) by (compute);
+            assert(0x0003dceec73d217f < (1u64 << 52)) by (bit_vector);
+        } else {
+            assert(constants::RR.limbs[i] == constants::RR.limbs[4]);
+            assert(constants::RR.limbs[4] == 0x000009411b7c309a) by (compute);
+            assert(0x000009411b7c309a < (1u64 << 52)) by (bit_vector);
+        }
+    });
+    assert(limbs_bounded(&constants::RR));
+}
+
+pub(crate) proof fn lemma_rr_equals_r_squared_mod_group_order()
+    ensures
+        to_nat(&constants::RR.limbs) == (montgomery_radix() * montgomery_radix()) % group_order(),
+{
+    assert(to_nat(&constants::RR.limbs) == (montgomery_radix() * montgomery_radix()) % group_order()) by (compute);
+}
+
+pub(crate) proof fn lemma_montgomery_radix_inverse()
+    ensures
+        (montgomery_radix() * montgomery_radix_inverse()) % group_order() == 1,
+{
+    assert((montgomery_radix() * montgomery_radix_inverse()) % group_order() == 1) by (compute);
+}
+
+pub(crate) proof fn lemma_group_order_is_odd()
+    ensures
+        group_order() % 2 == 1,
+{
+    assert(group_order() % 2 == 1) by (compute);
+}
+
+pub(crate) proof fn lemma_eq_trans_nat(x: nat, y: nat, z: nat)
+    requires
+        x == y,
+        y == z,
+    ensures
+        x == z,
+{
+}
+
+pub(crate) proof fn lemma_cancel_mod_factor(x: nat, y: nat, factor: nat, inv: nat, modulus: nat)
+    requires
+        modulus > 0,
+        (factor * inv) % modulus == 1,
+        (x * factor) % modulus == (y * factor) % modulus,
+    ensures
+        x % modulus == y % modulus,
+{
+    let left_mod = (x * factor) % modulus;
+    let right_mod = (y * factor) % modulus;
+    assert(left_mod == right_mod);
+
+    lemma_mod_mul_factor_left(x * factor, inv, modulus);
+    lemma_mod_mul_factor_left(y * factor, inv, modulus);
+
+    let left_scaled = (x * factor * inv) % modulus;
+    let right_scaled = (y * factor * inv) % modulus;
+    assert(left_scaled == ((left_mod) * inv) % modulus);
+    assert(right_scaled == ((right_mod) * inv) % modulus);
+    assert(left_scaled == right_scaled);
+
+    lemma_mul_is_associative(x as int, factor as int, inv as int);
+    lemma_mul_is_associative(y as int, factor as int, inv as int);
+
+    let left_combined = (x * (factor * inv)) % modulus;
+    let right_combined = (y * (factor * inv)) % modulus;
+    assert(left_combined == left_scaled);
+    assert(right_combined == right_scaled);
+    assert(left_combined == right_combined);
+
+    lemma_mod_mul_factor_right(x, factor * inv, modulus);
+    lemma_mod_mul_factor_right(y, factor * inv, modulus);
+
+    let left_reduced = (x * ((factor * inv) % modulus)) % modulus;
+    let right_reduced = (y * ((factor * inv) % modulus)) % modulus;
+    assert(left_combined == left_reduced);
+    assert(right_combined == right_reduced);
+    assert(left_reduced == right_reduced);
+
+    assert((factor * inv) % modulus == 1);
+    assert((x * ((factor * inv) % modulus)) % modulus == (x * 1) % modulus);
+    assert((y * ((factor * inv) % modulus)) % modulus == (y * 1) % modulus);
+
+    lemma_mod_mul_factor_right(x, 1, modulus);
+    lemma_mod_mul_factor_right(y, 1, modulus);
+
+    assert((x * 1) % modulus == x % modulus);
+    assert((y * 1) % modulus == y % modulus);
+
+    assert(x % modulus == y % modulus);
+}
+
+pub proof fn lemma_mod_mul_factor_left(a: nat, b: nat, m: nat)
+    requires
+        m > 0,
+    ensures
+        (a * b) % m == ((a % m) * b) % m,
+{
+    let q = a / m;
+    let r = a % m;
+    lemma_fundamental_div_mod(a as int, m as int);
+    assert(a == m * q + r);
+    let step1 = ((m * q + r) * b) % m;
+    let step2 = (b * (m * q + r)) % m;
+    let step3 = (b * (m * q) + b * r) % m;
+    let step4 = (((b * q) as nat) * m + b * r) % m;
+    let step5 = (b * r) % m;
+    let step6 = (r * b) % m;
+    let left = (a * b) % m;
+    let right = ((a % m) * b) % m;
+
+    assert(left == step1);
+    assert(step1 == step2) by {
+        lemma_mul_is_commutative((m * q + r) as int, b as int);
+    };
+    lemma_eq_trans_nat(left, step1, step2);
+    assert(step2 == step3) by {
+        lemma_mul_is_distributive_add(b as int, (m * q) as int, r as int);
+    };
+    lemma_eq_trans_nat(left, step2, step3);
+    assert(step3 == step4) by {
+        lemma_mul_is_commutative(m as int, q as int);
+        lemma_mul_is_associative(b as int, q as int, m as int);
+    };
+    lemma_eq_trans_nat(left, step3, step4);
+    assert(step4 == step5) by {
+        lemma_mod_sum_factor((b * q) as int, (b * r) as int, m as int);
+    };
+    lemma_eq_trans_nat(left, step4, step5);
+    assert(step5 == step6) by {
+        lemma_mul_is_commutative(b as int, r as int);
+    };
+    lemma_eq_trans_nat(left, step5, step6);
+    assert(step6 == right);
+    lemma_eq_trans_nat(left, step6, right);
+}
+
+pub proof fn lemma_mod_mul_factor_right(a: nat, b: nat, m: nat)
+    requires
+        m > 0,
+    ensures
+        (a * b) % m == (a * (b % m)) % m,
+{
+    let left = (a * b) % m;
+    let step = (b * a) % m;
+    let step2 = ((b % m) * a) % m;
+    let right = (a * (b % m)) % m;
+
+    assert(left == step) by {
+        lemma_mul_is_commutative(a as int, b as int);
+    };
+    assert(step == step2) by {
+        lemma_mod_mul_factor_left(b, a, m);
+    };
+    lemma_eq_trans_nat(left, step, step2);
+    assert(step2 == right) by {
+        lemma_mul_is_commutative(a as int, (b % m) as int);
+    };
+    lemma_eq_trans_nat(left, step2, right);
 }
 
 /// Need to use induction because the postcondition expands
