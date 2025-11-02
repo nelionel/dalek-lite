@@ -428,6 +428,139 @@ pub proof fn lemma_rr_limbs_bounded()
     assert(0x000d63c715bea69fu64 < (1u64 << 52)) by (bit_vector);
 }
 
+pub proof fn lemma_rr_equals_r_squared_mod_group_order()
+    ensures
+        to_nat(&constants::RR.limbs) == (montgomery_radix() * montgomery_radix()) % group_order(),
+{
+    assert(to_nat(&constants::RR.limbs) == (montgomery_radix() * montgomery_radix()) % group_order()) by (compute);
+}
+
+pub proof fn lemma_montgomery_radix_inverse()
+    ensures
+        (montgomery_radix() * montgomery_radix_inverse()) % group_order() == 1,
+{
+    assert((montgomery_radix() * montgomery_radix_inverse()) % group_order() == 1) by (compute);
+}
+
+pub proof fn lemma_cancel_montgomery_radix_mod(x: nat, y: nat)
+    requires
+        x < group_order(),
+        y < group_order(),
+        (x * montgomery_radix()) % group_order() == (y * montgomery_radix()) % group_order(),
+    ensures
+        x == y,
+{
+    let modulus = group_order();
+    let radix = montgomery_radix();
+    let inv = montgomery_radix_inverse();
+
+    assert(modulus > 0);
+    lemma_montgomery_radix_inverse();
+
+    let left = (x * radix) % modulus;
+    let right = (y * radix) % modulus;
+    assert(left == right);
+
+    calc! {
+        (==)
+        x % modulus;
+        (x * 1) % modulus; {
+            lemma_mod_mul_factor_right(x, 1, modulus);
+        }
+        (x * ((radix * inv) % modulus)) % modulus; {}
+        (x * (radix * inv)) % modulus; {
+            lemma_mod_mul_factor_right(x, radix * inv, modulus);
+        }
+        (x * radix * inv) % modulus; {
+            lemma_mul_is_associative(x as int, radix as int, inv as int);
+        }
+        (left * inv) % modulus; {
+            lemma_mod_mul_factor_left(x * radix, inv, modulus);
+        }
+        (right * inv) % modulus; {}
+        (y * radix * inv) % modulus; {
+            lemma_mod_mul_factor_left(y * radix, inv, modulus);
+        }
+        (y * (radix * inv)) % modulus; {
+            lemma_mul_is_associative(y as int, radix as int, inv as int);
+        }
+        (y * ((radix * inv) % modulus)) % modulus; {
+            lemma_mod_mul_factor_right(y, radix * inv, modulus);
+        }
+        (y * 1) % modulus; {}
+        y % modulus; {
+            lemma_mod_mul_factor_right(y, 1, modulus);
+        }
+    }
+
+    lemma_small_mod(x, modulus);
+    lemma_small_mod(y, modulus);
+    assert(x % modulus == x);
+    assert(y % modulus == y);
+    assert(x == y);
+}
+
+pub proof fn lemma_group_order_is_odd()
+    ensures
+        group_order() % 2 == 1,
+{
+    assert(group_order() % 2 == 1) by (compute);
+}
+
+pub proof fn lemma_mod_mul_factor_left(a: nat, b: nat, m: nat)
+    requires
+        m > 0,
+    ensures
+        (a * b) % m == ((a % m) * b) % m,
+{
+    let q = a / m;
+    let r = a % m;
+    lemma_fundamental_div_mod(a as int, m as int);
+    assert(a == m * q + r);
+    calc! {
+        (==)
+        (a * b) % m;
+        ((m * q + r) * b) % m; { }
+        (b * (m * q + r)) % m; {
+            lemma_mul_is_commutative((m * q + r) as int, b as int);
+        }
+        (b * (m * q) + b * r) % m; {
+            lemma_mul_is_distributive_add(b as int, (m * q) as int, r as int);
+        }
+        (((b * q) as nat) * m + b * r) % m; {
+            lemma_mul_is_commutative(m as int, q as int);
+            lemma_mul_is_associative(b as int, q as int, m as int);
+        }
+        (b * r) % m; {
+            lemma_mod_sum_factor((b * q) as int, (b * r) as int, m as int);
+        }
+        (r * b) % m; {
+            lemma_mul_is_commutative(b as int, r as int);
+        }
+    }
+}
+
+pub proof fn lemma_mod_mul_factor_right(a: nat, b: nat, m: nat)
+    requires
+        m > 0,
+    ensures
+        (a * b) % m == (a * (b % m)) % m,
+{
+    calc! {
+        (==)
+        (a * b) % m;
+        (b * a) % m; {
+            lemma_mul_is_commutative(a as int, b as int);
+        }
+        ((b % m) * a) % m; {
+            lemma_mod_mul_factor_left(b, a, m);
+        }
+        (a * (b % m)) % m; {
+            lemma_mul_is_commutative(a as int, (b % m) as int);
+        }
+    }
+}
+
 /// Need to use induction because the postcondition expands
 /// seq_u64_to_nat in the opposite way from how it's defined.
 /// The base case is straightforward, but it takes a few steps

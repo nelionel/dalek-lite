@@ -790,9 +790,60 @@ impl Scalar52 {
             // VER NOTE: Result is canonical from montgomery_reduce
             to_nat(&result.limbs) < group_order(),
     {
-        assume(false);  // TODO: Add proofs
         let ab = Scalar52::montgomery_reduce(&Scalar52::mul_internal(a, b));
-        Scalar52::montgomery_reduce(&Scalar52::mul_internal(&ab, &constants::RR))
+        let result = Scalar52::montgomery_reduce(&Scalar52::mul_internal(&ab, &constants::RR));
+        proof {
+            lemma_rr_equals_r_squared_mod_group_order();
+            let modulus = group_order();
+            let radix = montgomery_radix();
+            let rr_nat = to_nat(&constants::RR.limbs);
+            let ab_nat = to_nat(&ab.limbs);
+            let result_nat = to_nat(&result.limbs);
+            let a_nat = to_nat(&a.limbs);
+            let b_nat = to_nat(&b.limbs);
+
+            // These follow from the postconditions of montgomery_reduce and mul_internal
+            assert((result_nat * radix) % modulus == (ab_nat * rr_nat) % modulus);
+            let product_mod = (a_nat * b_nat) % modulus;
+            assert((ab_nat * radix) % modulus == product_mod);
+
+            let rr_square = (radix * radix) % modulus;
+            assert(rr_nat == rr_square);
+
+            // Replace RR with R^2 inside the modular product
+            assert((ab_nat * rr_nat) % modulus == (ab_nat * (radix * radix)) % modulus) by {
+                calc! {
+                    (==)
+                    (ab_nat * rr_nat) % modulus;
+                    (ab_nat * rr_square) % modulus; {}
+                    (ab_nat * ((radix * radix) % modulus)) % modulus; {}
+                    (ab_nat * (radix * radix)) % modulus; {
+                        lemma_mod_mul_factor_right(ab_nat, radix * radix, modulus);
+                    }
+                }
+            };
+
+            // Move the remaining radix factor outside the modulo so we can cancel it
+            assert((ab_nat * (radix * radix)) % modulus == (product_mod * radix) % modulus) by {
+                calc! {
+                    (==)
+                    (ab_nat * (radix * radix)) % modulus;
+                    ((ab_nat * radix) * radix) % modulus; {
+                        lemma_mul_is_associative(ab_nat as int, radix as int, radix as int);
+                    }
+                    (((ab_nat * radix) % modulus) * radix) % modulus; {
+                        lemma_mod_mul_factor_left(ab_nat * radix, radix, modulus);
+                    }
+                    (product_mod * radix) % modulus; {}
+                }
+            };
+
+            assert((result_nat * radix) % modulus == (product_mod * radix) % modulus);
+            assert(product_mod < modulus);
+            lemma_cancel_montgomery_radix_mod(result_nat, product_mod);
+            assert(result_nat == product_mod);
+        }
+        result
     }
 
     /// Compute `a^2` (mod l)
