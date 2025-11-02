@@ -132,6 +132,10 @@ pub open spec fn montgomery_radix() -> nat {
     pow2(260)
 }
 
+pub open spec fn montgomery_radix_inverse() -> nat {
+    5706410653605570882457795059301885719620630590890452783038400561109479083972nat
+}
+
 // Check that all limbs of a Scalar52 are properly bounded (< 2^52)
 pub open spec fn limbs_bounded(s: &Scalar52) -> bool {
     forall|i: int| 0 <= i < 5 ==> s.limbs[i] < (1u64 << 52)
